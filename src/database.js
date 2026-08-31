@@ -103,6 +103,26 @@ export async function getDB() {
             roleId TEXT,
             FOREIGN KEY (divisionId) REFERENCES Division(id) ON DELETE CASCADE
         );
+
+        -- ==========================================
+        -- TABELAS DE CURSOS (Adicionadas para corrigir o erro)
+        -- ==========================================
+        CREATE TABLE IF NOT EXISTS CourseSetup (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            guildId TEXT,
+            name TEXT,
+            horario TEXT,
+            voiceChannelId TEXT,
+            messageId TEXT,
+            createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS CourseSetupRole (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            setupId INTEGER,
+            roleId TEXT,
+            FOREIGN KEY (setupId) REFERENCES CourseSetup(id) ON DELETE CASCADE
+        );
     `);
 
     console.log('✅ Banco de dados SQLite conectado e tabelas sincronizadas!');
