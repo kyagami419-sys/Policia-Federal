@@ -35,6 +35,7 @@ export async function getDB() {
             acoesLogsChannel TEXT,
             cargoPolicial TEXT,
             cargoComando TEXT,
+            cursoLogsChannel TEXT,
             createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
             updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
         );

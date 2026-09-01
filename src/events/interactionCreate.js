@@ -156,6 +156,7 @@ export default {
             const approvalMenu = new ChannelSelectMenuBuilder().setCustomId('cfg_chan_approval').setPlaceholder('Canal: Aprovação de Setagens').addChannelTypes(ChannelType.GuildText);
             const expMenu = new ChannelSelectMenuBuilder().setCustomId('cfg_chan_exp').setPlaceholder('Canal: Logs de ADVs Expiradas').setChannelTypes(ChannelType.GuildText);
             const acaoLog = new ChannelSelectMenuBuilder().setCustomId('cfg_chan_acao').setPlaceholder('Canal: Logs de ações pagas').setChannelTypes(ChannelType.GuildText);
+            const curso = new ChannelSelectMenuBuilder().setCustomId('cfg_chan_curso').setPlaceholder('Canal: Logs de Cursos').setChannelTypes(ChannelType.GuildText);
 
             await interaction.update({
                 content: '📂 **Configuração de Canais (Parte 1)**\nSelecione os canais abaixo:',
@@ -170,7 +171,10 @@ export default {
 
             await interaction.followUp({
                 content: '📂 **Configuração de Canais (Parte 2)**',
-                components: [new ActionRowBuilder().addComponents(acaoLog)],
+                components: [
+                    new ActionRowBuilder().addComponents(acaoLog),
+                    new ActionRowBuilder().addComponents(curso)
+                ],
                 ephemeral: true
             });
         }
@@ -258,6 +262,17 @@ export default {
             try {
                 const db = await getDB();
 
+                if (interaction.customId === 'cfg_chan_curso') {
+                    const channelId = interaction.values[0];
+                    const db = await getDB();
+                    await db.run(`
+                        INSERT INTO Config (guildId, cursoLogsChannel) 
+                        VALUES (?, ?)
+                        ON CONFLICT(guildId) DO UPDATE SET cursoLogsChannel = excluded.cursoLogsChannel
+                    `, [interaction.guildId, channelId]);
+                    return await interaction.reply({ content: '✅ Canal de Cursos salvo com sucesso!', flags: MessageFlags.Ephemeral });
+                }
+
                 // 14. CONFIGURAÇÃO DE CURSOS (MÚLTIPLOS CARGOS)
               if (interaction.customId.startsWith('setup_curso_roles_')) {
                     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
@@ -284,7 +299,7 @@ export default {
                     }
 
                     const config = await db.get('SELECT * FROM Config WHERE guildId = ?', [interaction.guildId]);
-                    const announcementChannelId = config?.courseChannel || config?.approvalChannel;
+                    const announcementChannelId = config?.cursoLogsChannel;
 
                     if (!announcementChannelId) {
                         return interaction.editReply({ content: '❌ O canal de anúncios de cursos não foi configurado.' });
@@ -307,8 +322,8 @@ export default {
 
                     const botoesCurso = new ActionRowBuilder().addComponents(
                         new ButtonBuilder().setCustomId(`curso_entrar_${setupId}`).setLabel('Inscrever-se').setStyle(ButtonStyle.Success).setEmoji('✅'),
-                        new ButtonBuilder().setCustomId(`curso_sair_${setupId}`).setLabel('Sair da Lista').setStyle(ButtonStyle.Danger).setEmoji('🚪'),
-                        new ButtonBuilder().setCustomId(`curso_aprovar_todos_${setupId}`).setLabel('Aprovar Todos').setStyle(ButtonStyle.Primary).setEmoji('🎖️')
+                        new ButtonBuilder().setCustomId(`curso_sair_${setupId}`).setLabel('Sair').setStyle(ButtonStyle.Danger).setEmoji('🚪'),
+                        new ButtonBuilder().setCustomId(`curso_aprovar_${setupId}`).setLabel('Aprovar Todos').setStyle(ButtonStyle.Primary).setEmoji('🎖️')
                     );
 
                     const mensagemAnuncio = await canalAnuncio.send({ embeds: [embedAnuncio], components: [botoesCurso] });
@@ -383,6 +398,11 @@ export default {
                     const channelId = interaction.values[0];
                     await db.run(`INSERT INTO Config (guildId, exoLogsChannel) VALUES (?, ?) ON CONFLICT(guildId) DO UPDATE SET exoLogsChannel = excluded.exoLogsChannel`, [interaction.guildId, channelId]);
                     return await interaction.reply({ content: '✅ Canal de Exonerações salvo!', flags: 64 });
+                }
+                if (interaction.customId === 'cfg_chan_curso') {
+                    const channelId = interaction.values[0];
+                    await db.run(`INSERT INTO Config (guildId, cursoLogsChannel) VALUES (?, ?) ON CONFLICT(guildId) DO UPDATE SET cursoLogsChannel = excluded.cursoLogsChannel`, [interaction.guildId, channelId]);
+                    return await interaction.reply({ content: '✅ Canal de Cursos salvo!', flags: 64 });
                 }
 
                 if (interaction.customId === 'cfg_role_recruit_rank') {
