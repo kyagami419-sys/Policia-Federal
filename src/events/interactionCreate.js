@@ -149,13 +149,18 @@ export default {
         // ==========================================
         // 1.1 GERAR MENUS DE CANAIS
         // ==========================================
+        // ==========================================
+        // 1.1 GERAR MENUS DE CANAIS
+        // ==========================================
         else if (interaction.isButton() && interaction.customId === 'btn_config_canais') {
             const advMenu = new ChannelSelectMenuBuilder().setCustomId('cfg_chan_adv').setPlaceholder('Canal: Logs de Advertências').setChannelTypes(ChannelType.GuildText);
             const promoMenu = new ChannelSelectMenuBuilder().setCustomId('cfg_chan_promo').setPlaceholder('Canal: Logs de Promoções').setChannelTypes(ChannelType.GuildText);
             const exoMenu = new ChannelSelectMenuBuilder().setCustomId('cfg_chan_exo').setPlaceholder('Canal: Logs de Exoneração').setChannelTypes(ChannelType.GuildText);
             const approvalMenu = new ChannelSelectMenuBuilder().setCustomId('cfg_chan_approval').setPlaceholder('Canal: Aprovação de Setagens').addChannelTypes(ChannelType.GuildText);
             const expMenu = new ChannelSelectMenuBuilder().setCustomId('cfg_chan_exp').setPlaceholder('Canal: Logs de ADVs Expiradas').setChannelTypes(ChannelType.GuildText);
+            
             const acaoLog = new ChannelSelectMenuBuilder().setCustomId('cfg_chan_acao').setPlaceholder('Canal: Logs de ações pagas').setChannelTypes(ChannelType.GuildText);
+            const cursoMenu = new ChannelSelectMenuBuilder().setCustomId('cfg_chan_curso').setPlaceholder('Canal: Logs / Anúncios de Cursos').setChannelTypes(ChannelType.GuildText);
 
             await interaction.update({
                 content: '📂 **Configuração de Canais (Parte 1)**\nSelecione os canais abaixo:',
@@ -170,7 +175,10 @@ export default {
 
             await interaction.followUp({
                 content: '📂 **Configuração de Canais (Parte 2)**',
-                components: [new ActionRowBuilder().addComponents(acaoLog)],
+                components: [
+                    new ActionRowBuilder().addComponents(acaoLog),
+                    new ActionRowBuilder().addComponents(cursoMenu)
+                ],
                 ephemeral: true
             });
         }
@@ -230,6 +238,7 @@ export default {
             const recruitOrgMenu = new RoleSelectMenuBuilder().setCustomId('cfg_role_recruit_org').setPlaceholder('Corporação');
             const roleCmdAcao = new RoleSelectMenuBuilder().setCustomId('cfg_role_comando_acao').setPlaceholder('Comando de Ação');
             const roleAcao = new RoleSelectMenuBuilder().setCustomId('cfg_role_acao').setPlaceholder('Policial Ação');
+            const roleInstrutor = new RoleSelectMenuBuilder().setCustomId('cfg_role_instrutor').setPlaceholder('Instrutor de Cursos'); // <- Novo menu
 
             await interaction.update({
                 content: '🏷️ **Configuração de Cargos (Parte 1)**',
@@ -245,11 +254,103 @@ export default {
                 content: '🏷️ **Configuração de Cargos (Parte 2)**',
                 components: [
                     new ActionRowBuilder().addComponents(roleAcao),
-                    new ActionRowBuilder().addComponents(roleCmdAcao)
+                    new ActionRowBuilder().addComponents(roleCmdAcao),
+                    new ActionRowBuilder().addComponents(roleInstrutor) // <- Adicionado na linha
                 ],
                 ephemeral: true
             });
         }
+
+        // ==========================================
+// 1. CLIQUE NO BOTÃO DO CURSO (Abre o Modal)
+// ==========================================
+else if (interaction.isButton() && interaction.customId === 'painel_curso') {
+    if (!interaction.member.permissions.has('ManageRoles')) {
+        return await interaction.reply({ content: '❌ Você não tem permissão para criar cursos.', flags: MessageFlags.Ephemeral });
+    }
+
+    const modal = new ModalBuilder()
+        .setCustomId('modal_criar_curso')
+        .setTitle('Criar Novo Curso');
+
+    modal.addComponents(
+        new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+                .setCustomId('curso_nome')
+                .setLabel('Nome do Curso')
+                .setStyle(TextInputStyle.Short)
+                .setPlaceholder('Ex: Formação Tática')
+                .setRequired(true)
+        ),
+        new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+                .setCustomId('curso_horario')
+                .setLabel('Horário')
+                .setStyle(TextInputStyle.Short)
+                .setPlaceholder('Ex: 20:00')
+                .setRequired(true)
+        ),
+        new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+                .setCustomId('curso_data')
+                .setLabel('Data')
+                .setStyle(TextInputStyle.Short)
+                .setPlaceholder('Ex: 03/09/2026')
+                .setRequired(true)
+        )
+    );
+
+    await interaction.showModal(modal);
+}
+
+// ==========================================
+// 2. SUBMISSÃO DO MODAL (Salva e pede Canal de Voz)
+// ==========================================
+else if (interaction.isModalSubmit() && interaction.customId === 'modal_criar_curso') {
+    const nome = interaction.fields.getTextInputValue('curso_nome');
+    const horario = interaction.fields.getTextInputValue('curso_horario');
+    const data = interaction.fields.getTextInputValue('curso_data'); // <- Captura a data
+
+    const db = await getDB();
+    const result = await db.run(
+        'INSERT INTO CourseSetup (guildId, name, horario, data) VALUES (?, ?, ?, ?)', // 4 colunas
+        [interaction.guildId, nome, horario, data] // 4 valores correspondentes
+    );
+    const setupId = result.lastID;
+
+    const voiceMenu = new ChannelSelectMenuBuilder()
+        .setCustomId(`cfg_curso_voice_${setupId}`)
+        .setPlaceholder('Selecione o canal de voz do curso')
+        .setChannelTypes(ChannelType.GuildVoice);
+
+    await interaction.reply({
+        content: `📚 **Curso: ${nome}** (Data: ${data} às ${horario})\n🔊 Agora selecione abaixo o **Canal de Voz** onde o treinamento será ministrado:`,
+        components: [new ActionRowBuilder().addComponents(voiceMenu)],
+        flags: MessageFlags.Ephemeral
+    });
+}
+
+// ==========================================
+// 3. SELEÇÃO DO CANAL DE VOZ (Abre Cargos)
+// ==========================================
+else if (interaction.isAnySelectMenu() && interaction.customId.startsWith('cfg_curso_voice_')) {
+    const setupId = interaction.customId.replace('cfg_curso_voice_', '');
+    const voiceChannelId = interaction.values[0];
+
+    const db = await getDB();
+    await db.run('UPDATE CourseSetup SET voiceChannelId = ? WHERE id = ?', [voiceChannelId, setupId]);
+
+    const roleMenu = new RoleSelectMenuBuilder()
+        .setCustomId(`setup_curso_roles_${setupId}`)
+        .setPlaceholder('Selecione um ou mais cargos/patentes')
+        .setMinValues(1)
+        .setMaxValues(10);
+
+    await interaction.update({
+        content: '✅ Canal de voz vinculado com sucesso!\n🎖️ Por fim, selecione abaixo **os cargos** que serão entregues aos aprovados:',
+        components: [new ActionRowBuilder().addComponents(roleMenu)]
+    });
+}
 
         // ==========================================
         // 2. OUVINTE DE SELECT MENUS
@@ -259,65 +360,66 @@ export default {
                 const db = await getDB();
 
                 // 14. CONFIGURAÇÃO DE CURSOS (MÚLTIPLOS CARGOS)
-              if (interaction.customId.startsWith('setup_curso_roles_')) {
-                    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-                    const setupId = interaction.customId.replace('setup_curso_roles_', '').trim();
-                    const roleIds = interaction.values;
+              // 14. CONFIGURAÇÃO DE CURSOS (MÚLTIPLOS CARGOS)
+if (interaction.customId.startsWith('setup_curso_roles_')) {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    const setupId = interaction.customId.replace('setup_curso_roles_', '').trim();
+    const roleIds = interaction.values;
 
-                    const db = await getDB();
+    const db = await getDB();
 
-                    // Log de depuração para ver o ID no terminal
-                    console.log(`🔎 [Debug Curso] Tentando buscar curso ID: "${setupId}"`);
+    console.log(`🔎 [Debug Curso] Tentando buscar curso ID: "${setupId}"`);
 
-                    const course = await db.get('SELECT * FROM CourseSetup WHERE id = ?', [setupId]);
+    const course = await db.get('SELECT * FROM CourseSetup WHERE id = ?', [setupId]);
 
-                    // Trava de segurança absoluta para o bot não fechar com crash
-                    if (!course) {
-                        console.error(`❌ [Erro Curso] Curso ID ${setupId} não existe na tabela CourseSetup.`);
-                        return interaction.editReply({ 
-                            content: `❌ **Erro Crítico:** O curso com ID \`${setupId}\` não foi encontrado no banco de dados. Isso ocorre se o bot foi reiniciado após o comando ou se a tabela foi recriada. Por favor, execute o comando \`/criar_curso\` novamente.` 
-                        });
-                    }
+    if (!course) {
+        console.error(`❌ [Erro Curso] Curso ID ${setupId} não existe na tabela CourseSetup.`);
+        return interaction.editReply({ 
+            content: `❌ **Erro Crítico:** O curso com ID \`${setupId}\` não foi encontrado no banco de dados. Isso ocorre se o bot foi reiniciado após o comando ou se a tabela foi recriada. Crie um novo curso clicando no botão novamente.` 
+        });
+    }
 
-                    for (const roleId of roleIds) {
-                        await db.run('INSERT INTO CourseSetupRole (setupId, roleId) VALUES (?, ?)', [setupId, roleId]);
-                    }
+    for (const roleId of roleIds) {
+        await db.run('INSERT INTO CourseSetupRole (setupId, roleId) VALUES (?, ?)', [setupId, roleId]);
+    }
 
-                    const config = await db.get('SELECT * FROM Config WHERE guildId = ?', [interaction.guildId]);
-                    const announcementChannelId = config?.courseChannel || config?.approvalChannel;
+    const config = await db.get('SELECT * FROM Config WHERE guildId = ?', [interaction.guildId]);
+    
+    // Alinhado para buscar a coluna correta 'cursoLogsChannel' que você configurou no painel
+    const announcementChannelId = config?.cursoLogsChannel;
 
-                    if (!announcementChannelId) {
-                        return interaction.editReply({ content: '❌ O canal de anúncios de cursos não foi configurado.' });
-                    }
+    if (!announcementChannelId) {
+        return interaction.editReply({ content: '❌ O canal de anúncios/logs de cursos não foi configurado nas configurações de canais.' });
+    }
 
-                    const canalAnuncio = interaction.guild.channels.cache.get(announcementChannelId);
-                    if (!canalAnuncio) {
-                        return interaction.editReply({ content: '❌ O canal de anúncios configurado não foi encontrado.' });
-                    }
+    const canalAnuncio = interaction.guild.channels.cache.get(announcementChannelId);
+    if (!canalAnuncio) {
+        return interaction.editReply({ content: '❌ O canal de anúncios configurado não foi encontrado no servidor.' });
+    }
 
-                    const rolesFormatted = roleIds.map(id => `<@&${id}>`).join(', ');
+    const rolesFormatted = roleIds.map(id => `<@&${id}>`).join(', ');
 
-                    const embedAnuncio = new EmbedBuilder()
-                        .setTitle(`📚 CURSO / FORMAÇÃO: ${course.name}`)
-                        .setColor('#1E90FF')
-                        .setDescription(`Um novo treinamento foi aberto para a corporação!\n\n🕒 **Horário:** \`${course.horario}\`\n🔊 **Canal de Voz:** <#${course.voiceChannelId}>\n🎖️ **Cargos Concedidos:** ${rolesFormatted}\n👤 **Instrutor Responsável:** <@${interaction.user.id}>`)
-                        .addFields({ name: '👥 Inscritos [0/20]', value: 'Nenhum aluno inscrito ainda.', inline: false })
-                        .setFooter({ text: 'Clique no botão abaixo para entrar na lista de inscritos.' })
-                        .setTimestamp();
+    const embedAnuncio = new EmbedBuilder()
+        .setTitle(`📚 CURSO / FORMAÇÃO: ${course.name}`)
+        .setColor('#1E90FF')
+        .setDescription(`Um novo treinamento foi aberto para a corporação!\n\n🕒 **Horário:** \`${course.horario}\` \`${course.data}\`\n🔊 **Canal de Voz:** <#${course.voiceChannelId}>\n🎖️ **Cargos Concedidos:** ${rolesFormatted}\n👤 **Instrutor Responsável:** <@${interaction.user.id}>`)
+        .addFields({ name: '👥 Inscritos [0/20]', value: 'Nenhum aluno inscrito ainda.', inline: false })
+        .setFooter({ text: 'Clique no botão abaixo para entrar na lista de inscritos.' })
+        .setTimestamp();
 
-                    const botoesCurso = new ActionRowBuilder().addComponents(
-                        new ButtonBuilder().setCustomId(`curso_entrar_${setupId}`).setLabel('Inscrever-se').setStyle(ButtonStyle.Success).setEmoji('✅'),
-                        new ButtonBuilder().setCustomId(`curso_sair_${setupId}`).setLabel('Sair da Lista').setStyle(ButtonStyle.Danger).setEmoji('🚪'),
-                        new ButtonBuilder().setCustomId(`curso_aprovar_todos_${setupId}`).setLabel('Aprovar Todos').setStyle(ButtonStyle.Primary).setEmoji('🎖️')
-                    );
+    const botoesCurso = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`curso_entrar_${setupId}`).setLabel('Inscrever-se').setStyle(ButtonStyle.Success).setEmoji('✅'),
+        new ButtonBuilder().setCustomId(`curso_sair_${setupId}`).setLabel('Sair da Lista').setStyle(ButtonStyle.Danger).setEmoji('🚪'),
+        new ButtonBuilder().setCustomId(`curso_aprovar_${setupId}`).setLabel('Aprovar Todos').setStyle(ButtonStyle.Primary).setEmoji('🎖️')
+    );
 
-                    const mensagemAnuncio = await canalAnuncio.send({ embeds: [embedAnuncio], components: [botoesCurso] });
-                    
-                    await db.exec(`ALTER TABLE CourseSetup ADD COLUMN messageId TEXT;`).catch(() => {});
-                    await db.run('UPDATE CourseSetup SET messageId = ? WHERE id = ?', [mensagemAnuncio.id, setupId]);
+    const mensagemAnuncio = await canalAnuncio.send({ embeds: [embedAnuncio], components: [botoesCurso] });
+    
+    await db.exec(`ALTER TABLE CourseSetup ADD COLUMN messageId TEXT;`).catch(() => {});
+    await db.run('UPDATE CourseSetup SET messageId = ? WHERE id = ?', [mensagemAnuncio.id, setupId]);
 
-                    return interaction.editReply({ content: `✅ Anúncio do curso **${course.name}** enviado com sucesso para <#${announcementChannelId}>!` });
-                }
+    return interaction.editReply({ content: `✅ Anúncio do curso **${course.name}** enviado com sucesso para <#${announcementChannelId}>!` });
+}
                 if (interaction.customId === 'menu_selecionar_recrutador') {
                     const recrutadorId = interaction.values[0];
                     const modal = new ModalBuilder().setCustomId(`mod_conscrito_${recrutadorId}`).setTitle('Seus Dados na Cidade');
@@ -427,6 +529,22 @@ export default {
                     return await interaction.reply({ content: '✅ Cargo de ADV N2 salvo!', flags: 64 });
                 }
 
+                if (interaction.customId === 'cfg_role_instrutor') {
+                    const roleId = interaction.values[0];
+                    await db.run(`INSERT INTO Config (guildId, cargoInstrutor) VALUES (?, ?) ON CONFLICT(guildId) DO UPDATE SET cargoInstrutor = excluded.cargoInstrutor`, [interaction.guildId, roleId]);
+                    return await interaction.reply({ content: '✅ Cargo de Instrutor de Cursos salvo com sucesso!', flags: 64 });
+                }
+
+                if (interaction.customId === 'cfg_chan_curso') {
+                    const channelId = interaction.values[0];
+                    await db.run(`
+                        INSERT INTO Config (guildId, cursoLogsChannel) 
+                        VALUES (?, ?) 
+                        ON CONFLICT(guildId) DO UPDATE SET cursoLogsChannel = excluded.cursoLogsChannel
+                    `, [interaction.guildId, channelId]);
+                    return await interaction.reply({ content: '✅ Canal de Cursos salvo com sucesso!', flags: 64 });
+                }
+
                 if (interaction.customId.startsWith('cfg_add_role_div_')) {
                     const divisionId = interaction.customId.replace('cfg_add_role_div_', '');
                     const roles = interaction.values;
@@ -447,12 +565,14 @@ export default {
         // ==========================================
         // BOTÕES DE CURSOS (ENTRAR, SAIR, APROVAR)
         // ==========================================
-        else if (interaction.isButton() && (interaction.customId?.startsWith('curso_entrar_') || interaction.customId?.startsWith('curso_sair_') || interaction.customId?.startsWith('curso_aprovar_todos_'))) {
+        else if (interaction.isButton() && (interaction.customId?.startsWith('curso_entrar_') || interaction.customId?.startsWith('curso_sair_') || interaction.customId?.startsWith('curso_aprovar_'))) {
             const partes = interaction.customId.split('_');
-            const acao = partes[1];
-            const setupId = partes[2];
-
+            const acao = partes[1]; // 'entrar', 'sair' ou 'aprovar'
+            const setupId = partes[2]; // ID numérico correto do curso
+            
             const db = await getDB();
+            const config = await db.get('SELECT * FROM Config WHERE guildId = ?', [interaction.guildId]); // <- Adicione esta linha
+            
             const message = interaction.message;
             const embedOriginal = message.embeds[0];
             const campoInscritos = embedOriginal.fields.find(f => f.name.startsWith('👥 Inscritos'));
@@ -506,8 +626,13 @@ export default {
             }
 
             if (acao === 'aprovar') {
-                if (!interaction.member.permissions.has('ManageRoles')) {
-                    return await interaction.reply({ content: '❌ Apenas instrutores/administradores podem aprovar o curso.', flags: MessageFlags.Ephemeral });
+                // 🛡️ Validação do Cargo Configurado de Instrutor
+                if (config?.cargoInstrutor) {
+                    if (!interaction.member.roles.cache.has(config.cargoInstrutor) && !interaction.member.permissions.has('Administrator')) {
+                        return await interaction.reply({ content: `❌ Apenas oficiais com o cargo de Instrutor (<@&${config.cargoInstrutor}>) podem aprovar o curso!`, ephemeral: true });
+                    }
+                } else if (!interaction.member.permissions.has('ManageRoles')) {
+                    return await interaction.reply({ content: '❌ Apenas administradores podem aprovar o curso (Cargo de instrutor não configurado).', ephemeral: true });
                 }
 
                 if (lista.length === 0) {

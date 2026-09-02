@@ -35,6 +35,8 @@ export async function getDB() {
             acoesLogsChannel TEXT,
             cargoPolicial TEXT,
             cargoComando TEXT,
+            cursoLogsChannel TEXT,
+            cargoInstrutor TEXT, -- <- Adicionado aqui
             createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
             updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
         );
@@ -105,7 +107,7 @@ export async function getDB() {
         );
 
         -- ==========================================
-        -- TABELAS DE CURSOS (Adicionadas para corrigir o erro)
+        -- TABELAS DE CURSOS
         -- ==========================================
         CREATE TABLE IF NOT EXISTS CourseSetup (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -114,6 +116,7 @@ export async function getDB() {
             horario TEXT,
             voiceChannelId TEXT,
             messageId TEXT,
+            data TEXT,
             createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
         );
 
@@ -124,6 +127,11 @@ export async function getDB() {
             FOREIGN KEY (setupId) REFERENCES CourseSetup(id) ON DELETE CASCADE
         );
     `);
+
+    // Migrações de segurança para bancos de dados já existentes
+    await dbInstance.exec(`ALTER TABLE Config ADD COLUMN cursoLogsChannel TEXT;`).catch(() => {});
+    await dbInstance.exec(`ALTER TABLE CourseSetup ADD COLUMN data TEXT;`).catch(() => {});
+    await dbInstance.exec(`ALTER TABLE Config ADD COLUMN cargoInstrutor TEXT;`).catch(() => {});
 
     console.log('✅ Banco de dados SQLite conectado e tabelas sincronizadas!');
     return dbInstance;
